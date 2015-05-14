@@ -79,10 +79,12 @@ module ExcelGrid
 
       @default_width = (sheet.elements['worksheet/sheetFormatPr'].attributes['defaultColWidth'].to_f * 7 + 4) * 72 / 96
       @default_height = sheet.elements['worksheet/sheetFormatPr'].attributes['defaultRowHeight'].to_f
+      @row_height = []
 
       cells = []
       sheet.elements.each('worksheet/sheetData/row') {|row|
         r = row.attributes['r'].to_i
+        @row_height[r] = (row.attributes['ht'] || @default_height).to_f
         row.elements.each('c') {|cell|
           v = if cell.attributes['t']== 's'
             @book.ss[cell.elements['v'].text.to_i]
@@ -104,6 +106,17 @@ module ExcelGrid
        end
       }
       @cells = cells
+      @row_pos_y =  @row_height.each_with_object([0]){|h,a|
+        a << a.last + (h || @default_height)
+      }
+    end
+
+    def col_x(c)
+        c * @default_width
+    end
+
+    def row_y(r)
+        @row_pos_y[r] || r * @default_height
     end
 
     def load_drawing
@@ -132,16 +145,21 @@ module ExcelGrid
           s = cell_anchor.elements.each('.//a:t'){|e| e}.map{|e| e.text}.join
           #puts geom + ":" + s
           x = ((from_col * default_width + emu2pt(from_col_off)) * scale).round(2)
-          y = ((from_row * default_height + emu2pt(from_row_off)) * scale).round(2)
+          y = ((row_y(from_row) + emu2pt(from_row_off)) * scale).round(2)
           w = ((to_col * default_width + emu2pt(to_col_off)) * scale).round(2) - x
-          h = ((to_row * default_height + emu2pt(to_row_off)) * scale).round(2) - y
+          h = ((row_y(to_row) + emu2pt(to_row_off)) * scale).round(2) - y
           style = "top:#{y}pt;left:#{x}pt;width:#{w}pt;height:#{h}pt;"
           if fillcolor
             style += "background-color: rgba(#{fillcolor[0,2].hex},#{fillcolor[2,2].hex},#{fillcolor[4,2].hex},0.6);"
           end
           if geom == 'roundRect'
-            style += 'border-radius: 10pt;';
+            style += 'border-radius:10pt;';
+          elsif geom == 'flowChartAlternateProcess'
+            style += "border-radius:4pt;";
+          elsif geom == 'ellipse'
+            style += "border-radius:#{w}pt;";
           end
+
           #p default_width
           #p  emu2pt(from_col_off)
           #puts s
@@ -173,9 +191,9 @@ module ExcelGrid
        row.each{|cell|
          if cell
            w = ((cell[:w] || 1) * default_width * scale).round(2)
-           h = ((cell[:h] || 1) * default_height * scale).round(2)
+           h = (row_y(cell[:h] || 1) * scale).round(2)
            x = ((cell[:col]-1) * default_width * scale).round(2)
-           y = ((cell[:row]-1) * default_height * scale).round(2)
+           y = (row_y(cell[:row]-1) * scale).round(2)
            if (cell[:v] || cell[:h])
              name = cell[:v].to_s.sub(/[ 　]+/,' ').sub(/^\d+(?=[^-\d])/,'').strip.sub(/\n/,'<br />')
              html += "<div class='#{css_class}' id='#{id}_#{cell[:id]}' style='top:#{y}pt;left:#{x}pt;width:#{w}pt;height:#{h}pt'><span style='height:#{h}pt'>#{name}</span></div>\n"
