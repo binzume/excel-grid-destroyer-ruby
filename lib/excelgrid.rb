@@ -5,7 +5,7 @@ require 'zip'
 
 module ExcelGrid
   class Book
-    attr_reader :zip_file, :ss, :theme_color
+    attr_reader :zip_file, :ss, :theme_color, :sheets
     def initialize(file_name)
       @zip_file = Zip::File.open(file_name)
       ent = @zip_file.get_entry('xl/sharedStrings.xml')
@@ -19,6 +19,14 @@ module ExcelGrid
           @ss << str.elements.each('r'){|e| e.text }.join.gsub(/<[^>]+>/,'')
         end
       }
+
+      ent = @zip_file.get_entry('xl/workbook.xml')
+      book_xml = REXML::Document.new(ent.get_input_stream.read)
+      @sheets = []
+      book_xml.elements.each('workbook/sheets/sheet') {|s|
+        @sheets << {name: s.attributes['name'], state: s.attributes['state'], file: "sheet#{@sheets.length+1}"}
+      }
+
       read_theme
     end
 
